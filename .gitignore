@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Backend
+backend/models/
+backend/data_to_train/
+backend/embeddings_index/
+backend/__pycache__/
+backend/*.pyc
+
+# Frontend
+chat-app/frontend/node_modules/
+chat-app/frontend/build/
+chat-app/frontend/dist/
+chat-app/frontend/.next/
+chat-app/frontend/.env
+chat-app/frontend/.env.local
+
+# Build outputs
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribution
+*.deb
+*.rpm
+*.pkg
+*.dmg
+*.msi
+*.exe
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z

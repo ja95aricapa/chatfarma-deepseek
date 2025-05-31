@@ -21,6 +21,7 @@ chat-app/frontend/dist/
 chat-app/frontend/.next/
 chat-app/frontend/.env
 chat-app/frontend/.env.local
+chat-app/node_modules/
 
 # Build outputs
 build/

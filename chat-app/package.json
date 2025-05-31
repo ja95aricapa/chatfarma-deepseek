@@ -1,0 +1,45 @@
+{
+  "name": "chatfarma-deepseek",
+  "version": "1.0.0",
+  "description": "FarmaAsisChat - Interfaz gráfica para el asistente farmacéutico",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "concurrently \"BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\""
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.3",
+    "@emotion/styled": "^11.11.0",
+    "@mui/material": "^5.15.0",
+    "@mui/icons-material": "^5.15.0",
+    "axios": "^1.6.5",
+    "electron-store": "^8.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^16.18.0",
+    "@types/react": "^17.0.0",
+    "@types/react-dom": "^17.0.0",
+    "concurrently": "^7.0.0",
+    "electron": "^26.2.0",
+    "electron-builder": "^24.8.1",
+    "electron-is-dev": "^2.0.0",
+    "typescript": "^4.9.5",
+    "wait-on": "^6.0.0"
+  },
+  "build": {
+    "appId": "com.farmaasischat.app",
+    "productName": "FarmaAsisChat",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    }
+  }
+}

@@ -49,6 +49,7 @@ pip install -r requirements.txt
 3. Descargar DeepSeek-R1:
 ```bash
 bash scripts/download_deepseek.sh
+pyinstaller --onefile --add-data "models/deepseek-r1.bin;models" run.py
 ```
 
 4. Instalar dependencias del frontend:

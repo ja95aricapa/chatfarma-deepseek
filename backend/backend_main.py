@@ -9,7 +9,7 @@ from langchain.document_loaders import (
     UnstructuredPDFLoader,
     Docx2txtLoader,
     PandasExcelLoader,
-    PytesseractLoader
+    PytesseractLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import tempfile
@@ -17,9 +17,11 @@ import shutil
 import uvicorn
 from pydantic import BaseModel
 
+
 class ChatPayload(BaseModel):
     question: str
     chat_history: list[list[str]] = []
+
 
 app = FastAPI()
 
@@ -42,7 +44,9 @@ llm = DeepSeek(model_name="togethercomputer/DeepSeek-R-1")
 embeddings = DeepSeekEmbeddings()
 
 # Crear los vectorstores
-persistent_store = Chroma(persist_directory=EMBEDDINGS_DIR, embedding_function=embeddings)
+persistent_store = Chroma(
+    persist_directory=EMBEDDINGS_DIR, embedding_function=embeddings
+)
 # El índice de sesión NO persiste en disco (solo vive en RAM)
 session_store = Chroma(persist_directory=None, embedding_function=embeddings)
 
@@ -50,22 +54,25 @@ session_store = Chroma(persist_directory=None, embedding_function=embeddings)
 qa_chain = ConversationalRetrievalChain.from_llm(
     llm=llm,
     retriever=persistent_store.as_retriever(search_kwargs={"k": 5}),
-    return_source_documents=True
+    return_source_documents=True,
 )
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "up"}
 
+
 @app.post("/chat")
 async def chat_endpoint(payload: ChatPayload):
     question = payload.question
-    history  = payload.chat_history
-    result   = qa_chain({"question": question, "chat_history": history})
+    history = payload.chat_history
+    result = qa_chain({"question": question, "chat_history": history})
     return {
         "answer": result["answer"],
-        "sources": [doc.metadata for doc in result["source_documents"]]
+        "sources": [doc.metadata for doc in result["source_documents"]],
     }
+
 
 @app.post("/train")
 async def train_endpoint():
@@ -76,7 +83,9 @@ async def train_endpoint():
     """
     # Verificar que exista la carpeta
     if not os.path.exists(DATA_DIR):
-        raise HTTPException(status_code=500, detail="No existe la carpeta data_to_train/")
+        raise HTTPException(
+            status_code=500, detail="No existe la carpeta data_to_train/"
+        )
 
     # Listar todos los archivos que haya en data_to_train/
     all_files = os.listdir(DATA_DIR)
@@ -97,7 +106,9 @@ async def train_endpoint():
             loader = Docx2txtLoader(filepath)
         elif lower.endswith(".xlsx") or lower.endswith(".xls"):
             loader = PandasExcelLoader(filepath)
-        elif lower.endswith(".png") or lower.endswith(".jpg") or lower.endswith(".jpeg"):
+        elif (
+            lower.endswith(".png") or lower.endswith(".jpg") or lower.endswith(".jpeg")
+        ):
             loader = PytesseractLoader(filepath)
         else:
             # Si no es un tipo soportado, saltar
@@ -120,10 +131,14 @@ async def train_endpoint():
         persistent_store.persist()
         return {
             "status": "success",
-            "message": f"Índice global actualizado con {len(docs_to_add)} fragmentos."
+            "message": f"Índice global actualizado con {len(docs_to_add)} fragmentos.",
         }
     else:
-        return {"status": "sin_contenido", "message": "No se encontró texto indexable en data_to_train/."}
+        return {
+            "status": "sin_contenido",
+            "message": "No se encontró texto indexable en data_to_train/.",
+        }
+
 
 @app.post("/upload_patient")
 async def upload_patient(file: UploadFile = File(...)):
@@ -136,7 +151,9 @@ async def upload_patient(file: UploadFile = File(...)):
 
         # Elegir loader según tipo de archivo
         lower = file.filename.lower()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=200
+        )
         docs_to_add = []
 
         try:
@@ -146,10 +163,17 @@ async def upload_patient(file: UploadFile = File(...)):
                 loader = Docx2txtLoader(temp_path)
             elif lower.endswith(".xlsx") or lower.endswith(".xls"):
                 loader = PandasExcelLoader(temp_path)
-            elif lower.endswith(".png") or lower.endswith(".jpg") or lower.endswith(".jpeg"):
+            elif (
+                lower.endswith(".png")
+                or lower.endswith(".jpg")
+                or lower.endswith(".jpeg")
+            ):
                 loader = PytesseractLoader(temp_path)
             else:
-                return {"status": "error", "message": "Formato no soportado para historia clínica."}
+                return {
+                    "status": "error",
+                    "message": "Formato no soportado para historia clínica.",
+                }
 
             loaded = loader.load()
             split_docs = text_splitter.split_documents(loaded)
@@ -162,10 +186,14 @@ async def upload_patient(file: UploadFile = File(...)):
             session_store.add_documents(docs_to_add)
             return {
                 "status": "success",
-                "message": f"Historia clínica {file.filename} indexada en sesión con {len(docs_to_add)} fragmentos."
+                "message": f"Historia clínica {file.filename} indexada en sesión con {len(docs_to_add)} fragmentos.",
             }
         else:
-            return {"status": "sin_texto", "message": "No se extrajo texto del archivo."}
+            return {
+                "status": "sin_texto",
+                "message": "No se extrajo texto del archivo.",
+            }
+
 
 @app.post("/clear_session")
 async def clear_session():
@@ -173,6 +201,7 @@ async def clear_session():
     global session_store
     session_store = Chroma(persist_directory=None, embedding_function=embeddings)
     return {"status": "success", "message": "Sesión de pacientes limpiada."}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

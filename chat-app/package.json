@@ -38,7 +38,9 @@
       "output": "dist"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        "portable"
+      ],
       "icon": "build/icon.ico"
     }
   }

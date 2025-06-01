@@ -1,20 +1,21 @@
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from langchain.embeddings import DeepSeekEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.llms import DeepSeek
+from langchain_community.llms import HuggingFacePipeline  # <--- Para LLM Local
+from langchain_community.embeddings import (
+    HuggingFaceEmbeddings,
+)  # <--- Para Embeddings Locales
+from langchain_community.vectorstores import Chroma
 from langchain.chains import ConversationalRetrievalChain
-from langchain.document_loaders import (
+from langchain_community.document_loaders import (
     UnstructuredPDFLoader,
     Docx2txtLoader,
-    PandasExcelLoader,
-    PytesseractLoader,
+    UnstructuredExcelLoader,
+    UnstructuredImageLoader,  # Asegúrate de tener Tesseract OCR instalado en tu sistema
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import tempfile
 import shutil
-import uvicorn
 from pydantic import BaseModel
 
 
@@ -38,10 +39,50 @@ app.add_middleware(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data_to_train")
 EMBEDDINGS_DIR = os.path.join(BASE_DIR, "embeddings_index")
+LOCAL_LLM_MODEL_PATH = os.path.join(
+    BASE_DIR, "models"
+)  # Ruta a tu modelo LLM descargado
 
-# Inicializar el modelo DeepSeek
-llm = DeepSeek(model_name="togethercomputer/DeepSeek-R-1")
-embeddings = DeepSeekEmbeddings()
+# ---- Configuración del Modelo LLM Local ----
+print(f"Intentando cargar LLM desde: {LOCAL_LLM_MODEL_PATH}")
+if not os.path.exists(os.path.join(LOCAL_LLM_MODEL_PATH, "config.json")):
+    raise RuntimeError(
+        f"No se encontró config.json en {LOCAL_LLM_MODEL_PATH}. Asegúrate de haber descargado el modelo LLM correctamente."
+    )
+
+llm = HuggingFacePipeline.from_model_id(
+    model_id=LOCAL_LLM_MODEL_PATH,
+    task="text-generation",
+    pipeline_kwargs={  # Parámetros para la pipeline de Hugging Face Transformers
+        # "max_new_tokens": 512,  # Ajusta según sea necesario
+        "temperature": 0.7,  # Descomenta y ajusta si es necesario
+        # "top_p": 0.95,      # Descomenta y ajusta si es necesario
+    },
+    model_kwargs={  # Parámetros pasados al método .from_pretrained() del modelo
+        # "torch_dtype": "auto", # Puede ayudar con la memoria y velocidad en GPUs compatibles
+        "device_map": "auto",  # Para distribuir el modelo en GPUs/CPU automáticamente (requiere accelerate)
+        # "trust_remote_code": True, # Algunos modelos lo requieren, usar con precaución
+    },
+)
+print("LLM local cargado exitosamente.")
+
+# ---- Configuración de Embeddings Locales ----
+# Para embeddings locales, usaremos un modelo estándar de Sentence Transformers.
+# DEBES ASEGURARTE DE TENER ESTE MODELO DESCARGADO O ACCESIBLE.
+# Puedes descargarlo una vez y apuntar a la ruta local, o dejar que HuggingFaceEmbeddings lo descargue la primera vez.
+# Ejemplo: "sentence-transformers/all-MiniLM-L6-v2" (bueno y ligero, en inglés)
+# Si necesitas español, considera "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+print(f"Cargando modelo de embeddings: {EMBEDDING_MODEL_NAME}")
+# Si quieres forzar el uso de CPU para embeddings (útil si la GPU está ocupada por el LLM):
+# model_kwargs_embeddings = {'device': 'cpu'}
+# embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs=model_kwargs_embeddings)
+embeddings = HuggingFaceEmbeddings(
+    model_name=EMBEDDING_MODEL_NAME,
+    # encode_kwargs={'normalize_embeddings': True} # Algunos modelos se benefician de esto
+)
+print("Modelo de embeddings cargado exitosamente.")
+
 
 # Crear los vectorstores
 persistent_store = Chroma(
@@ -67,11 +108,15 @@ async def health_check():
 async def chat_endpoint(payload: ChatPayload):
     question = payload.question
     history = payload.chat_history
-    result = qa_chain({"question": question, "chat_history": history})
-    return {
-        "answer": result["answer"],
-        "sources": [doc.metadata for doc in result["source_documents"]],
-    }
+    try:
+        result = qa_chain({"question": question, "chat_history": history})
+        return {
+            "answer": result["answer"],
+            "sources": [doc.metadata for doc in result["source_documents"]],
+        }
+    except Exception as e:
+        print(f"Error en chat_endpoint: {e}")  # Loguear el error
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/train")
@@ -83,14 +128,12 @@ async def train_endpoint():
     """
     # Verificar que exista la carpeta
     if not os.path.exists(DATA_DIR):
-        raise HTTPException(
-            status_code=500, detail="No existe la carpeta data_to_train/"
-        )
+        raise HTTPException(status_code=404, detail=f"No existe la carpeta {DATA_DIR}")
 
     # Listar todos los archivos que haya en data_to_train/
     all_files = os.listdir(DATA_DIR)
     if not all_files:
-        return {"status": "vacio", "message": "No hay archivos en data_to_train/"}
+        return {"status": "vacio", "message": f"No hay archivos en {DATA_DIR}"}
 
     docs_to_add = []
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -98,29 +141,39 @@ async def train_endpoint():
     for filename in all_files:
         filepath = os.path.join(DATA_DIR, filename)
         lower = filename.lower()
+        loader = None
 
         # Elegir loader según extensión
         if lower.endswith(".pdf"):
             loader = UnstructuredPDFLoader(filepath)
-        elif lower.endswith(".docx") or lower.endswith(".doc"):
+        elif lower.endswith((".docx", ".doc")):
             loader = Docx2txtLoader(filepath)
-        elif lower.endswith(".xlsx") or lower.endswith(".xls"):
-            loader = PandasExcelLoader(filepath)
-        elif (
-            lower.endswith(".png") or lower.endswith(".jpg") or lower.endswith(".jpeg")
-        ):
-            loader = PytesseractLoader(filepath)
+        elif lower.endswith((".xlsx", ".xls")):
+            loader = UnstructuredExcelLoader(filepath)
+        elif lower.endswith((".png", ".jpg", ".jpeg")):
+            # Asegúrate que Tesseract OCR está instalado y en el PATH del sistema
+            # sudo apt-get install tesseract-ocr (en Debian/Ubuntu)
+            # y el paquete de idioma español: sudo apt-get install tesseract-ocr-spa
+            try:
+                loader = UnstructuredImageLoader(
+                    filepath, lang="spa"
+                )  # Especificar idioma para Tesseract
+            except Exception as e:
+                print(
+                    f"Error inicializando UnstructuredImageLoader para {filename} (¿Tesseract instalado?): {e}"
+                )
+                continue
         else:
-            # Si no es un tipo soportado, saltar
+            print(f"Archivo no soportado: {filename}")
             continue
 
-        # Cargar y dividir en chunks
         try:
+            print(f"Procesando archivo: {filename}")
             loaded = loader.load()
             split_docs = text_splitter.split_documents(loaded)
             docs_to_add.extend(split_docs)
+            print(f"Añadidos {len(split_docs)} chunks de {filename}")
         except Exception as e:
-            # Podríamos hacer logging aquí, pero devolvemos un mensaje de error parcial
             print(f"Error procesando {filename}: {e}")
             continue
 
@@ -136,7 +189,7 @@ async def train_endpoint():
     else:
         return {
             "status": "sin_contenido",
-            "message": "No se encontró texto indexable en data_to_train/.",
+            "message": f"No se encontró texto indexable en {DATA_DIR}.",
         }
 
 
@@ -155,33 +208,34 @@ async def upload_patient(file: UploadFile = File(...)):
             chunk_size=1000, chunk_overlap=200
         )
         docs_to_add = []
+        loader = None
 
         try:
             if lower.endswith(".pdf"):
                 loader = UnstructuredPDFLoader(temp_path)
-            elif lower.endswith(".docx") or lower.endswith(".doc"):
+            elif lower.endswith((".docx", ".doc")):
                 loader = Docx2txtLoader(temp_path)
-            elif lower.endswith(".xlsx") or lower.endswith(".xls"):
-                loader = PandasExcelLoader(temp_path)
-            elif (
-                lower.endswith(".png")
-                or lower.endswith(".jpg")
-                or lower.endswith(".jpeg")
-            ):
-                loader = PytesseractLoader(temp_path)
+            elif lower.endswith((".xlsx", ".xls")):
+                loader = UnstructuredExcelLoader(temp_path)
+            elif lower.endswith((".png", ".jpg", ".jpeg")):
+                loader = UnstructuredImageLoader(temp_path, lang="spa")
             else:
-                return {
-                    "status": "error",
-                    "message": "Formato no soportado para historia clínica.",
-                }
+                raise HTTPException(
+                    status_code=400,
+                    detail="Formato no soportado para historia clínica.",
+                )
 
             loaded = loader.load()
             split_docs = text_splitter.split_documents(loaded)
             docs_to_add.extend(split_docs)
+        except HTTPException as http_exc:  # Re-lanzar HTTPException
+            raise http_exc
         except Exception as e:
-            return {"status": "error", "message": f"Fallo al procesar el archivo: {e}"}
+            print(f"Error en upload_patient procesando {file.filename}: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Fallo al procesar el archivo: {e}"
+            )
 
-        # Añadir SOLO a session_store (in-memory)
         if docs_to_add:
             session_store.add_documents(docs_to_add)
             return {
@@ -197,11 +251,7 @@ async def upload_patient(file: UploadFile = File(...)):
 
 @app.post("/clear_session")
 async def clear_session():
-    # Volver a instanciar session_store en memoria (sin persistir)
     global session_store
+    # Recrear el Chroma store en memoria para limpiarlo
     session_store = Chroma(persist_directory=None, embedding_function=embeddings)
     return {"status": "success", "message": "Sesión de pacientes limpiada."}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)

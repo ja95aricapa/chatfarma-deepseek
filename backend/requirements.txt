@@ -1,8 +1,9 @@
 fastapi
 uvicorn
 langchain
+langchain-community
 chromadb
-deepseek
+#deepseek
 python-docx
 pymupdf
 pandas
@@ -11,3 +12,9 @@ pillow
 pytesseract
 python-multipart
 huggingface-hub
+
+# Para HuggingFace local pipelines y embeddings
+torch
+transformers
+sentence-transformers # Para HuggingFaceEmbeddings
+accelerate # Recomendado para carga eficiente de modelos grandes

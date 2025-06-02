@@ -16,7 +16,7 @@ echo "Verificando si estás logueado en Hugging Face..."
 huggingface-cli whoami
 
 # Configuración
-MODEL_ID="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B" # <--- CORREGIDO
+MODEL_ID="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" # <--- CORREGIDO
 DEST_DIR="../backend/models"
 # MODEL_FILE="deepseek-r1.bin" # Ya no se usa esta variable para la comprobación directa
 

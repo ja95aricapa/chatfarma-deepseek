@@ -53,15 +53,14 @@ if not os.path.exists(os.path.join(LOCAL_LLM_MODEL_PATH, "config.json")):
 llm = HuggingFacePipeline.from_model_id(
     model_id=LOCAL_LLM_MODEL_PATH,
     task="text-generation",
+    device_map="auto",
     pipeline_kwargs={  # Parámetros para la pipeline de Hugging Face Transformers
-        # "max_new_tokens": 512,  # Ajusta según sea necesario
-        "temperature": 0.7,  # Descomenta y ajusta si es necesario
-        # "top_p": 0.95,      # Descomenta y ajusta si es necesario
+        "temperature": 0.7,
+        # "max_new_tokens": 512, # Puedes añadir esto aquí si lo necesitas para la generación
     },
     model_kwargs={  # Parámetros pasados al método .from_pretrained() del modelo
-        # "torch_dtype": "auto", # Puede ayudar con la memoria y velocidad en GPUs compatibles
-        "device_map": "auto",  # Para distribuir el modelo en GPUs/CPU automáticamente (requiere accelerate)
-        # "trust_remote_code": True, # Algunos modelos lo requieren, usar con precaución
+        # "torch_dtype": "auto",
+        # "trust_remote_code": True, # Solo si es necesario y confías en el código
     },
 )
 print("LLM local cargado exitosamente.")
